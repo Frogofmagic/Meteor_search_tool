@@ -33,7 +33,8 @@ Test按了會先跑前50 frame, 可以看一下有沒有狂誤判或是根本看
 
 認定在71500有流星後, 就去excel檔案內找fr = 71000~71500之間的紀錄
 ![image](https://github.com/Frogofmagic/Meteor_search_tool/assets/11169420/dfb0f639-96ff-4fcf-902e-d6a9396cb8f4)
-就可以去看影片中00:39:36 應該就會找到流星了.
+
+接著就可以去看影片中00:39:36 應該就會找到流星了.
 
 
 介面是用PyQT5做的, 不確定為何產生的.exe無法使用, 所以就只有先放.py等檔案.
