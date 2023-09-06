@@ -1,0 +1,343 @@
+from PyQt5 import QtWidgets, QtGui, QtCore
+from PyQt5.QtCore import QThread, pyqtSignal
+from PyQt5.QtWidgets import *
+from PyQt5.QtGui import *
+from Meteor_search_UI import Ui_Meteor_search
+
+from datetime import datetime
+from datetime import timedelta
+from openpyxl import Workbook
+from openpyxl.styles import PatternFill, Border, Side, Font, colors,Alignment
+from openpyxl.utils import get_column_letter
+
+import os
+import sys
+import cv2
+import csv
+import tkinter as tk
+import numpy as np
+import time
+from tkinter import filedialog as tkFileDialog #python3
+	
+class MainWindow(QtWidgets.QMainWindow):
+	
+		Flag_checking_file = False
+		Flag_testing = False
+		Start_frame = 0
+		End_frame = 0
+		Img_resize_X = 0
+		Img_resize_Y = 0
+		Threshold_1 = 0
+		Threshold_2 = 0
+		
+		save_folder = ""
+		outputDir = ""
+		
+		Time_count_start = 0
+		Time_count_current = 0
+		Time_count_predict_remain = 0
+				
+		def __init__(self):
+				#in python3, super(Class, self).xxx = super().xxx
+				super(MainWindow, self).__init__()
+				self.ui = Ui_Meteor_search()
+				self.ui.setupUi(self)
+				
+				self.filenameselect = ""
+				
+				#pushButton function
+				self.ui.pushButton_Select_File.clicked.connect(self.pushButton_Select_File_Clicked)
+				self.ui.pushButton_Start.clicked.connect(self.pushButton_Start_Clicked)
+				self.ui.pushButton_Stop.clicked.connect(self.pushButton_Stop_Clicked)
+				self.ui.pushButton_Test_Threshold.clicked.connect(self.pushButton_Test_Clicked)
+				
+				
+		#Stop check video
+		def pushButton_Stop_Clicked(self):
+				self.Flag_checking_file = False
+				self.Flag_testing = False
+			
+		#Start check video
+		def pushButton_Start_Clicked(self):
+				if self.filenameselect != "" and not self.Flag_checking_file and not self.Flag_testing:
+						self.Flag_checking_file = True
+						self.log_write("Start check File name: " + str(self.filenameselect))
+						
+						self.Img_resize_X = self.ui.lineEdit_Img_Resize_X.text()
+						self.Img_resize_Y = self.ui.lineEdit_Img_Resize_Y.text()
+						self.Threshold_1 = self.ui.lineEdit_Threshold_1.text()
+						self.Threshold_2 = self.ui.lineEdit_Threshold_2.text()
+						self.Start_frame = self.ui.lineEdit_Start_frame.text()
+						self.End_frame = self.ui.lineEdit_End_frame.text()
+						
+						self.Time_count_start = time.time()
+						
+						self.check_video_main()
+						
+				else:
+						if self.filenameselect == "":
+								self.log_write("Error: No file selected.")
+						if self.Flag_checking_file:
+								self.log_write("Error: System is checking video.")
+								
+		#Test Button
+		def pushButton_Test_Clicked(self):
+				if self.filenameselect != "" and not self.Flag_checking_file and not self.Flag_testing:
+						self.Flag_checking_file = True
+						self.Flag_testing = True
+						self.log_write("Start Test File name: " + str(self.filenameselect))
+						
+						self.Img_resize_X = self.ui.lineEdit_Img_Resize_X.text()
+						self.Img_resize_Y = self.ui.lineEdit_Img_Resize_Y.text()
+						self.Threshold_1 = self.ui.lineEdit_Threshold_1.text()
+						self.Threshold_2 = self.ui.lineEdit_Threshold_2.text()
+						self.Start_frame = self.ui.lineEdit_Start_frame.text()
+						self.End_frame = self.ui.lineEdit_End_frame.text()
+						
+						temp_end_frame = int(self.Start_frame)+50
+						if(temp_end_frame < int(self.End_frame)):
+								self.End_frame = temp_end_frame
+						
+						self.check_video_main()
+						
+				else:
+						if self.filenameselect == "":
+								self.log_write("Error: No file selected.")
+						if self.Flag_checking_file:
+								self.log_write("Error: System is checking video.")
+								
+		#Select input video file
+		def pushButton_Select_File_Clicked(self):
+				try:
+						self.filenameselect, filetype = QFileDialog.getOpenFileName(self, "Open file", "./", "AVI MP4 files (*.avi;*.mp4);;All Files (*)")
+						if self.filenameselect != "":
+								self.log_write("File name: " + str(self.filenameselect))
+								
+								#產生輸出資料夾
+								self.outputDir = os.path.expanduser("./output")
+								timestamp = datetime.now().strftime("%m%d_%H%M%S")
+								self.save_folder = os.path.join(self.outputDir, "frame_images_"+str(timestamp))
+								os.makedirs(self.save_folder, exist_ok=True)  # 创建保存图像的文件夹
+								
+								#顯示input及output資訊
+								self.ui.lineEdit_Input_file_name.setText(str(self.filenameselect))
+								self.ui.lineEdit_Output_file_name.setText(str(self.save_folder))
+								
+								#顯示一共有多少frame
+								cap = cv2.VideoCapture(self.filenameselect)
+								total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+								self.ui.lineEdit_File_Total_Frame.setText(str(total_frames))
+								self.log_write("Video Total frames: "+(str(total_frames)))
+								
+								#更新start & end frame
+								self.ui.lineEdit_Start_frame.setText("0")
+								self.ui.lineEdit_End_frame.setText(str(total_frames))
+								
+								#顯示影片的FPS
+								file_fps = cap.get(cv2.CAP_PROP_FPS)
+								file_fps = round(file_fps, 2)
+								self.ui.lineEdit_FPS.setText(str(file_fps))
+								self.log_write("Video FPS: "+(str(file_fps)))
+								
+								#更新影片解析度長跟寬
+								width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+								self.ui.lineEdit_Img_Resize_X.setText(str(width))
+								height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+								self.ui.lineEdit_Img_Resize_Y.setText(str(height))
+								self.log_write("Video resolution: "+(str(width))+"*"+(str(height)))
+								
+								# 計算並顯示影片總長度
+								video_duration_seconds = total_frames / file_fps
+								video_duration = timedelta(seconds=video_duration_seconds)
+								formatted_duration = str(video_duration).split(".")[0]  # 格式化為 HH:MM:SS
+								self.log_write(f"Video duration: {formatted_duration}")
+								
+								cap.release()
+								
+						else:
+								self.log_write("Error: No file selected.")
+								
+				except Exception as ex:
+								self.log_write("Error" + (" Open file error. " + str(ex)))
+								print("Error" + (" Open file error." + str(ex)))
+								pass
+								
+		def log_write(self,log):
+				self.ui.textBrowser_Log.append("["+datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]+"]   "+str(log)) 
+					
+		#==========================================================================================#
+		def Lighten(self, bg_img, fg_img):
+				result = np.zeros(bg_img.shape)
+				# It is a comparison and reference with Boolean value sequence
+				is_BG_lighter = bg_img > fg_img
+				
+				result[is_BG_lighter] = bg_img[is_BG_lighter]
+				result[~is_BG_lighter] = fg_img[~is_BG_lighter]
+			
+				return result
+				
+		# the function of detecting
+		def check_image(self, img1, img2, img3):
+				# convert into a gray scale image
+				gray1 = cv2.cvtColor(img1, cv2.COLOR_RGB2GRAY)
+				gray2 = cv2.cvtColor(img2, cv2.COLOR_RGB2GRAY)
+				gray3 = cv2.cvtColor(img3, cv2.COLOR_RGB2GRAY)
+				
+				# different of absolute
+				diff1 = cv2.absdiff(gray1, gray2)
+				diff2 = cv2.absdiff(gray2, gray3)
+				# giving logical product.
+				diff_and = cv2.bitwise_and(diff1, diff2)
+				# binalize black and white
+				_, diff_wb = cv2.threshold(diff_and, int(self.Threshold_1), 255, cv2.THRESH_BINARY) #5 for little meteor
+				# removing noise
+				diff = cv2.medianBlur(diff_wb, 3)
+				
+				if self.Flag_testing == True:
+						cv2.imshow('image', diff)
+						
+				return diff
+
+		# geting image
+		def get_image(self, cap):
+				global ret
+				ret,img = cap.read()  #ret;judgment whether or not can read it
+				if ret :
+						#pass
+						img = cv2.resize(img, (3840,2160))#(962, 720))
+						#cv2.imshow('image', img)
+				else:
+						return (ret,img)
+				return(ret,img)
+				
+		def seconds_to_hms(self, seconds):
+				hours, remainder = divmod(seconds, 3600)
+				minutes, seconds = divmod(remainder, 60)
+				return f"{int(hours):02d}:{int(minutes):02d}:{int(seconds):02d}"
+				
+				
+		def check_video_main(self):
+				# Starting the capture of the video file
+				cap = cv2.VideoCapture(self.filenameselect)
+				cap.set(cv2.CAP_PROP_POS_FRAMES, int(self.Start_frame))
+				# Three frames of the beginning
+				img1 = img2 = img3 = self.get_image(cap)[1]
+				# Initial composition image
+				dst = np.zeros(img1.shape)
+				th = int(self.Threshold_2)  # 获取阈值的整数值
+				self.log_write('th='+str(th))
+				date = datetime.now()
+				num = 1
+				frame_skip = 1  # Skip every X frames
+				total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+				
+				# 设置计数器和保存图像的文件夹
+				frame_count = int(self.Start_frame)
+				save_interval = 500
+				min_file_size = 300 * save_interval  # 设置最小文件大小阈值，单位为字节
+				
+				try:
+						with open(self.save_folder + "/" + "log_" + date.strftime("%m%d_%H%M%S") +  ".csv", "a", newline='') as file:
+								w = csv.writer(file, delimiter=",")
+								while True:
+										current_frame = int(cap.get(cv2.CAP_PROP_POS_FRAMES))
+										frame_timestamp = int(cap.get(cv2.CAP_PROP_POS_MSEC))  # 获取时间戳
+										frame_time = timedelta(milliseconds=frame_timestamp)  # 将毫秒时间戳转换为timedelta
+										frame_time_str = str(frame_time).split(".")[0]  # 转换为HH:MM:SS格式
+
+										self.ui.lineEdit_Status_Current_frame.setText(str(current_frame))
+										self.ui.lineEdit_Status_Total_frame.setText(str(total_frames))
+										
+										#t1 = time.time()
+										if self.Flag_checking_file == False:
+												break
+										#  If an image cannot read, it is finished
+										if not ret or int(current_frame) >= int(self.End_frame):
+												break
+										if cap.get(cv2.CAP_PROP_POS_FRAMES) % frame_skip == 0:
+												#  provide difference
+												diff = self.check_image(img1, img2, img3)
+												#  If there is difference that counted more than a value of th, judge movement that there was
+												cnt = cv2.countNonZero(diff)
+										
+												if cnt > th:  # 使用整数值比较
+														w.writerow([num, 'fr', int(cap.get(cv2.CAP_PROP_POS_FRAMES)), 'cnt', cnt, 'timestamp', frame_time_str])
+														self.log_write(f"detects movement {num} fr= {int(cap.get(cv2.CAP_PROP_POS_FRAMES))} cnt= {cnt}")
+														#cv2.imshow('meteo-image', img2)
+														# photographs to image
+								
+														#bg_img = dst / 255    #clip 0~1 為了加速除法改乘法
+														bg_img = dst * 0.003921568627451
+					 
+														#fg_img = img2 / 255 為了加速除法改乘法
+														fg_img = img2 * 0.003921568627451 
+								
+														#t5 = time.time()
+														# to the comparison light composition
+														result = self.Lighten(bg_img, fg_img).clip(0,1) #t6-t5最花時間, 約0.3s
+														#t6 = time.time()
+														
+														dst = result*255  
+														#cv2.imshow('result',result)
+														num += 1
+												 
+										#t2 = time.time()
+										img1,img2,img3 = (img2,img3,self.get_image(cap)[1])
+										
+										QApplication.processEvents()  # 强制更新GUI
+										
+										# 保存合成图像
+										if frame_count % save_interval == 0 and frame_count != 0:
+												composite_image_name = date.strftime("%m%d_%H%M%S") + f"_composite_{frame_count}.jpg"
+												composite_image_path = os.path.join(self.save_folder, composite_image_name)
+												cv2.imwrite(composite_image_path, dst)  # 保存合成图像
+												
+												# 检查文件大小
+												file_size = os.stat(composite_image_path).st_size  # 获取文件大小，单位为字节
+												if file_size <= min_file_size:
+														os.remove(composite_image_path)  # 删除小于阈值的文件
+												else:
+														self.log_write(f"已保存合成图像：{composite_image_path}")
+												dst = np.zeros(img1.shape)
+												
+										frame_count += 1
+										
+										self.Time_count_current = time.time()
+										self.Time_count_predict_remain = (self.Time_count_current - self.Time_count_start) / (frame_count - int(self.Start_frame)) * (int(self.End_frame) - frame_count)
+										
+										formatted_remain_time = self.seconds_to_hms(self.Time_count_predict_remain)
+										#self.log_write("Remain time:" + str(formatted_remain_time))
+										self.ui.lineEdit_Status_Remain_Time.setText(str(formatted_remain_time))
+										
+										#t3 = time.time()
+										#print(t2-t1)
+										#print(t3-t2)
+										#print("Time check")
+				except Exception as ex:
+								self.log_write("Error" + (" While loop error. " + str(ex)))
+								print("Error" + (" While loop error." + str(ex)))
+								pass
+								
+									 
+				cv2.imwrite(self.save_folder + "/" + "metro_" + str(num) + "_" + date.strftime("%m%d_%H%M%S") + ".jpg" , dst) #書き込み
+				# final work
+				file.close
+				self.log_write('Check video mainloop END!')
+				cv2.waitKey(0)
+				cap.release()
+				cv2.destroyAllWindows() 
+				self.Flag_checking_file = False
+				self.Flag_testing = False
+				
+		
+				
+if __name__ == '__main__':
+		import sys
+		#for high DPI
+		QtCore.QCoreApplication.setAttribute(QtCore.Qt.AA_EnableHighDpiScaling)
+		app = QtWidgets.QApplication(sys.argv)
+		window = MainWindow()
+		window.show()
+		sys.exit(app.exec_())
+		
+		
